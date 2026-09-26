@@ -2,6 +2,7 @@ export type PerplexitySearchResult={title:string;url:string;snippet:string;date?
 export type PerplexitySearchOptions={maxResults?:number;searchContextSize?:"low"|"medium"|"high";country?:string;languages?:string[];domains?:string[]};
 type PerplexitySearchResponse={results:PerplexitySearchResult[];id:string;server_time?:string|null};
 
+// Perplexity Search API endpoint. Keep credentials server-side only.
 const ENDPOINT="https://api.perplexity.ai/search";
 
 function retryDelay(header:string|null){if(!header)return 1000;const seconds=Number(header);if(Number.isFinite(seconds))return Math.max(0,seconds*1000);const at=Date.parse(header);return Number.isNaN(at)?1000:Math.max(0,at-Date.now())}
