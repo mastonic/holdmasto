@@ -1,0 +1,1 @@
+export default function Empty({title,text,action}:{title:string,text:string,action?:React.ReactNode}){return <div className="empty"><div className="emptyIcon">+</div><h3>{title}</h3><p className="muted">{text}</p>{action}</div>}
