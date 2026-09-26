@@ -1,0 +1,3 @@
+import Link from "next/link";
+const items=[["/","Dashboard"],["/campaigns","Campagnes"],["/prospects","Prospects"],["/pipeline","Pipeline"],["/agent","Agent IA"],["/settings","Reglages"]];
+export default function Sidebar(){return <aside className="side"><div className="brand">HOLD<span>MASTO</span></div><div className="muted small">Growth</div><nav className="nav">{items.map(([href,label])=><Link key={href} href={href}>{label}</Link>)}</nav></aside>}
