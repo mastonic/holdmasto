@@ -1,0 +1,1 @@
+export type Prospect={id:string;name:string;address:string;phone?:string;website?:string;rating?:number;reviews?:number;score:number;reasons:string[];status:"A contacter";source:"google_places";siren?:string;siret?:string;legalName?:string};
