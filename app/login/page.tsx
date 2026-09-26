@@ -1,0 +1,1 @@
+import AuthForm from "@/components/AuthForm";export default function Login(){return <main className="main" style={{margin:"60px auto",maxWidth:620}}><div className="brand">HOLD<span>MASTO</span></div><h1>Connexion Growth</h1><p className="muted">Connecte-toi pour enregistrer tes campagnes et prospects dans Supabase.</p><AuthForm/></main>}
