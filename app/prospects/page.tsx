@@ -1,1 +1,2 @@
-import Shell from "@/components/Shell";import ProspectList from "@/components/ProspectList";export default function Page(){return <Shell><h1>Prospects</h1><p className="muted">Entreprises reelles trouvees et classees par potentiel commercial.</p><section className="panel"><ProspectList/></section></Shell>}
+import Shell from "@/components/Shell";import ProspectList from "@/components/ProspectList";
+export default async function Page({searchParams}:{searchParams:Promise<{campaign?:string}>}){const params=await searchParams;return <Shell><h1>Prospects</h1><p className="muted">Entreprises reelles trouvees et classees par potentiel commercial.</p><section className="panel"><ProspectList campaignId={params.campaign}/></section></Shell>}
