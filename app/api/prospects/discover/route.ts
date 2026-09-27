@@ -1,5 +1,129 @@
-import {NextRequest,NextResponse} from "next/server";import {scoreProspect} from "@/lib/scoring";
-type GPlace={id:string;displayName?:{text?:string};formattedAddress?:string;nationalPhoneNumber?:string;websiteUri?:string;rating?:number;userRatingCount?:number};
-async function enrich(name:string,address:string){try{const q=encodeURIComponent(name+" "+address);const r=await fetch("https://recherche-entreprises.api.gouv.fr/search?q="+q+"&per_page=1",{cache:"no-store"});if(!r.ok)return null;const d=await r.json();const e=d.results?.[0];if(!e)return null;return {siren:e.siren,siret:e.siege?.siret,legalName:e.nom_complet||e.nom_raison_sociale}}catch{return null}}
-async function findEmail(url?:string){if(!url)return null;try{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),3500);const r=await fetch(url,{signal:controller.signal,headers:{"User-Agent":"HoldmastoGrowth/1.0"},cache:"no-store"});clearTimeout(timer);if(!r.ok)return null;const html=(await r.text()).slice(0,500000);const mailto=html.match(/mailto:([^"'?\s>]+)/i)?.[1];const raw=mailto||html.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];if(!raw)return null;const email=decodeURIComponent(raw).toLowerCase();if(/example\.|sentry|wixpress|cloudflare|schema\.org/.test(email))return null;return email}catch{return null}}
-export async function POST(req:NextRequest){const key=process.env.GOOGLE_PLACES_API_KEY;if(!key)return NextResponse.json({error:"GOOGLE_PLACES_API_KEY manquante. Ajoute-la dans .env.local."},{status:503});const body=await req.json();const niche=String(body.niche||"").trim(),zone=String(body.zone||"").trim();const wanted=Math.min(Math.max(Number(body.limit)||20,1),60);if(!niche||!zone)return NextResponse.json({error:"Niche et zone obligatoires."},{status:400});let token:string|undefined;const places:GPlace[]=[];while(places.length<wanted){const pageSize=Math.min(20,wanted-places.length);const payload:any={textQuery:niche+" "+zone,pageSize,languageCode:"fr",regionCode:"FR",includePureServiceAreaBusinesses:true};if(token)payload.pageToken=token;const r=await fetch("https://places.googleapis.com/v1/places:searchText",{method:"POST",headers:{"Content-Type":"application/json","X-Goog-Api-Key":key,"X-Goog-FieldMask":"places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.rating,places.userRatingCount,nextPageToken"},body:JSON.stringify(payload),cache:"no-store"});const d=await r.json();if(!r.ok)return NextResponse.json({error:d.error?.message||"Erreur Google Places"},{status:r.status});places.push(...(d.places||[]));token=d.nextPageToken;if(!token)break}const prospects=await Promise.all(places.slice(0,wanted).map(async p=>{const name=p.displayName?.text||"Entreprise";const address=p.formattedAddress||"";const s=scoreProspect({phone:p.nationalPhoneNumber,website:p.websiteUri,rating:p.rating,reviews:p.userRatingCount});const [legal,email]=await Promise.all([enrich(name,address),findEmail(p.websiteUri)]);return {id:p.id,name,address,phone:p.nationalPhoneNumber,email,website:p.websiteUri,rating:p.rating,reviews:p.userRatingCount,score:s.score,reasons:s.reasons,status:"A contacter",source:"google_places",...legal}}));return NextResponse.json({prospects,count:prospects.length})}
+import { NextRequest, NextResponse } from "next/server";
+import { scoreProspect } from "@/lib/scoring";
+
+type GPlace = {
+  id: string;
+  displayName?: { text?: string };
+  formattedAddress?: string;
+  nationalPhoneNumber?: string;
+  websiteUri?: string;
+  rating?: number;
+  userRatingCount?: number;
+};
+
+async function enrich(name: string, address: string) {
+  try {
+    const q = encodeURIComponent(name + " " + address);
+    const r = await fetch("https://recherche-entreprises.api.gouv.fr/search?q=" + q + "&per_page=1", { cache: "no-store" });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const e = d.results?.[0];
+    if (!e) return null;
+    return { siren: e.siren, siret: e.siege?.siret, legalName: e.nom_complet || e.nom_raison_sociale };
+  } catch {
+    return null;
+  }
+}
+
+async function findEmail(url?: string) {
+  if (!url) return null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
+    const r = await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": "HoldmastoGrowth/1.0" },
+      cache: "no-store",
+    });
+    clearTimeout(timer);
+    if (!r.ok) return null;
+    const html = (await r.text()).slice(0, 500000);
+    const mailto = html.match(/mailto:([^"'?\s>]+)/i)?.[1];
+    const raw = mailto || html.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+    if (!raw) return null;
+    const email = decodeURIComponent(raw).toLowerCase();
+    if (/example\.|sentry|wixpress|cloudflare|schema\.org/.test(email)) return null;
+    return email;
+  } catch {
+    return null;
+  }
+}
+
+async function geocodeZone(zone: string) {
+  try {
+    const r = await fetch("https://api-adresse.data.gouv.fr/search/?q=" + encodeURIComponent(zone) + "&limit=1", { cache: "no-store" });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const coords = d.features?.[0]?.geometry?.coordinates;
+    if (!coords) return null;
+    return { longitude: Number(coords[0]), latitude: Number(coords[1]) };
+  } catch {
+    return null;
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const key = process.env.GOOGLE_PLACES_API_KEY;
+  if (!key) return NextResponse.json({ error: "GOOGLE_PLACES_API_KEY manquante." }, { status: 503 });
+
+  const body = await req.json();
+  const niche = String(body.niche || "").trim();
+  const zone = String(body.zone || "").trim();
+  const wanted = Math.min(Math.max(Number(body.limit) || 20, 1), 60);
+  if (!niche || !zone) return NextResponse.json({ error: "Niche et zone obligatoires." }, { status: 400 });
+
+  const postalCode = zone.match(/\b\d{5}\b/)?.[0];
+  const center = await geocodeZone(zone);
+  let token: string | undefined;
+  const places: GPlace[] = [];
+
+  while (places.length < wanted) {
+    const pageSize = Math.min(20, wanted - places.length);
+    const payload: Record<string, unknown> = {
+      textQuery: niche + " " + zone,
+      pageSize,
+      languageCode: "fr",
+      regionCode: "FR",
+      includePureServiceAreaBusinesses: true,
+    };
+    if (center) payload.locationBias = { circle: { center, radius: 12000 } };
+    if (token) payload.pageToken = token;
+
+    const r = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.rating,places.userRatingCount,nextPageToken",
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
+    const d = await r.json();
+    if (!r.ok) return NextResponse.json({ error: d.error?.message || "Erreur Google Places" }, { status: r.status });
+
+    const pagePlaces: GPlace[] = d.places || [];
+    const inZone = postalCode
+      ? pagePlaces.filter((place) => String(place.formattedAddress || "").includes(postalCode))
+      : pagePlaces;
+    places.push(...inZone);
+    token = d.nextPageToken;
+    if (!token) break;
+  }
+
+  const prospects = await Promise.all(
+    places.slice(0, wanted).map(async (p) => {
+      const name = p.displayName?.text || "Entreprise";
+      const address = p.formattedAddress || "";
+      const s = scoreProspect({ phone: p.nationalPhoneNumber, website: p.websiteUri, rating: p.rating, reviews: p.userRatingCount });
+      const [legal, email] = await Promise.all([enrich(name, address), findEmail(p.websiteUri)]);
+      return {
+        id: p.id, name, address, phone: p.nationalPhoneNumber, email, website: p.websiteUri,
+        rating: p.rating, reviews: p.userRatingCount, score: s.score, reasons: s.reasons,
+        status: "A contacter", source: "google_places", ...legal,
+      };
+    })
+  );
+
+  return NextResponse.json({ prospects, count: prospects.length, zone: { query: zone, postalCode: postalCode || null, center } });
+}
